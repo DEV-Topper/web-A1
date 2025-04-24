@@ -1,4 +1,3 @@
-
 "use client";
 
 import { useEffect, useState } from "react";
@@ -36,31 +35,87 @@ import {
   SidebarMenuItem,
   SidebarMenuButton,
 } from "@/components/ui/sider";
-type Student = {
+import { CourseDetail } from "./course-detail";
+
+export interface Category {
+  name: string;
+}
+
+export interface Instructor {
   fullname: string;
+  image_link: string;
+}
+
+export interface Student {
+  id: string;
+  fullname: string;
+  verified: boolean;
+  categories: Category[];
+  image_link: string;
   email: string;
   token: string;
-  id: string;
-};
+}
 
-type Course = {
+export interface Option {
+  value: string;
   id: string;
-  name: string;
-  instructor: {
-    fullname: string;
-    image_link: string;
-  };
-  image_link:string
-  price: string;
-  updated_at: string;
+  answer?: boolean;
+}
+
+export interface Question {
+  question: string;
+  quiz_id: string;
+  id: string;
+  options: Option[];
+}
+
+export interface Quiz {
+  module_id: string;
+  questions: Question[];
+  id: string;
+}
+
+export interface Lesson {
+  title: string;
   description: string;
-  discount: string;
+  duration: string;
+  module_id: string;
+  video_link: string;
+  id: string;
+}
+
+export interface Module {
+  title: string;
+  description: string;
+  course_id: string;
+  id: string;
+  completed: boolean;
+  lessons: Lesson[];
+  quiz: Quiz[] | null;
+}
+
+export interface Course {
+  name: string;
+  description: string;
+  price: string;
+  id: string;
+  instructor_id: string;
+  instructor: Instructor;
+  average_rating: string | null;
+  category: Category[];
   created_at: string;
-  progress: number;
-  completedLessons: number;
-  totalLessons: number;
-  category: string;
-};
+  updated_at: string;
+  image_link: string;
+  students: Student[] | null;
+  discount: string;
+  modules: Module[];
+  enrolled: boolean | null;
+  rating: number | string;
+  reviews: number | string;
+  isBestseller?: boolean;
+  completionStatus: string;
+  percentComplete: string;
+}
 
 type AllCourse = {
   id: string;
@@ -69,7 +124,7 @@ type AllCourse = {
     fullname: string;
     image_link: string;
   };
-  image_link:string
+  image_link: string;
   price: string;
   updated_at: string;
   description: string;
@@ -79,34 +134,64 @@ type AllCourse = {
   completedLessons: number;
   totalLessons: number;
   category: {};
-  average_rating:string
+  average_rating: string;
 };
 
+type CompletedCourse = {
+  id: string;
+  name: string;
+  instructor: {
+    fullname: string;
+    image_link: string;
+  };
+  image_link: string;
+  price: string;
+  updated_at: string;
+  description: string;
+  discount: string;
+  created_at: string;
+  progress: number;
+  completedLessons: number;
+  totalLessons: number;
+  category: {};
+  average_rating: string;
+};
 export default function StudentDashboard() {
   const [student, setStudent] = useState<Student>({
     fullname: "Loading...",
     email: "",
-    id:"",
+    id: "",
     token: "",
+    verified: false,
+    categories: [],
+    image_link: "",
   });
   const [courses, setCourses] = useState<Course[]>([]);
   const [allcourses, setallCourses] = useState<AllCourse[]>([]);
-  const [courseId , setCourseid] = useState()
-  const [certificates, setCertificates] = useState<{ [courseId: string]: any }>({});
+  const [courseId, setCourseid] = useState<string[]>([]);
+  const [selectedCourse, setSelectedCourse] = useState<Course | null>(null);
+  const [certificates, setCertificates] = useState<{ [courseId: string]: any }>(
+    {}
+  );
   const studentId = student.id;
-  const  token = student.token;
+  const [completedCourses, setcompletedCourses] = useState<CompletedCourse[]>(
+    []
+  );
+  const token = student.token;
   useEffect(() => {
-    
     const stored = localStorage.getItem("userData");
-    console.log("stored",stored)
+    console.log("stored", stored);
     if (stored) {
       const parsed = JSON.parse(stored);
-      console.log("parsed",parsed)
+      console.log("parsed", parsed);
       setStudent({
         fullname: parsed.fullname || "Student",
         email: parsed.email || "",
         id: parsed.id,
-        token: parsed.token
+        token: parsed.token,
+        verified: parsed.verified,
+        categories: parsed.categories,
+        image_link: parsed.image_link,
       });
     }
   }, []);
@@ -116,24 +201,27 @@ export default function StudentDashboard() {
     if (studentId) {
       const fetchCourses = async () => {
         try {
-          const response = await fetch(`https://api.a1schools.org/users/${studentId}/courses`, {
-            method: "GET",
-            headers: {
-              'Authorization': `Bearer ${token}`,  // Replace with your token
-              'Content-Type': 'application/json',
-            },
-          });
+          const response = await fetch(
+            `https://api.a1schools.org/users/${studentId}/courses`,
+            {
+              method: "GET",
+              headers: {
+                Authorization: `Bearer ${token}`, // Replace with your token
+                "Content-Type": "application/json",
+              },
+            }
+          );
 
           if (!response.ok) {
             throw new Error("Failed to fetch courses");
           }
 
           const data = await response.json();
-          console.log("data",data)
+          console.log("data", data);
           setCourses(data.data); // Assuming the API returns a `courses` array
           const courseIds = data.data.map((course: Course) => course.id);
-console.log("All Course IDs:", courseIds); 
-setCourseid(courseIds)
+          console.log("All Course IDs:", courseIds);
+          setCourseid(courseIds);
         } catch (error) {
           console.error("Error fetching courses:", error);
         }
@@ -146,112 +234,146 @@ setCourseid(courseIds)
   useEffect(() => {
     const fetchCertificates = async () => {
       if (!token || courses.length === 0) return;
-  
+
       const certMap: { [courseId: string]: any } = {};
-  
+
       for (const course of courses) {
         try {
-          const response = await fetch(`https://api.a1schools.org/courses/${course.id}/certificate`, {
-            headers: {
-              Authorization: `Bearer ${token}`,
-              'Content-Type': 'application/json',
-            },
-          });
-  
+          const response = await fetch(
+            `https://api.a1schools.org/courses/${course.id}/certificate`,
+            {
+              headers: {
+                Authorization: `Bearer ${token}`,
+                "Content-Type": "application/json",
+              },
+            }
+          );
+
           if (!response.ok) {
             console.warn(`No certificate for course ${course.id}`);
             continue;
           }
-  
+
           const data = await response.json();
-          console.log("data cert" , data )
+          console.log("data cert", data);
           certMap[course.id] = data;
           setCertificates(certMap);
-          console.log("certmap",certMap)
+          console.log("certmap", certMap);
         } catch (error) {
-          console.error(`Error fetching certificate for course ${course.id}:`, error);
+          console.error(
+            `Error fetching certificate for course ${course.id}:`,
+            error
+          );
         }
       }
-  
+
       setCertificates(certMap);
     };
-  
+
     fetchCertificates();
   }, [courses, token]);
 
-
-  // useEffect(() => {
-  //   // Fetch courses when the student ID is available
-    
-  //     const fetchallCourses = async () => {
-  //       try {
-  //         const response = await fetch(`https://api.a1schools.org/courses`, {
-  //           method: "GET",
-  //           headers: {
-  //             'Authorization': `Bearer ${token}`,  // Replace with your token
-  //             'Content-Type': 'application/json',
-  //           },
-  //         });
-
-  //         if (!response.ok) {
-  //           throw new Error("Failed to fetch courses");
-  //         }
-
-  //         const data = await response.json();
-  //         console.log("data",data)
-  //         setallCourses(data.data); // Assuming the API returns a `courses` array
-          
-  //       } catch (error) {
-  //         console.error("Error fetching courses:", error);
-  //       }
-  //     };
-
-  //     fetchallCourses();
-    
-  // }, [, token]);
-
   useEffect(() => {
+    // Fetch courses when the student ID is available
+
     const fetchallCourses = async () => {
       try {
         const response = await fetch(`https://api.a1schools.org/courses`, {
           method: "GET",
           headers: {
-            'Authorization': `Bearer ${token}`,
-            'Content-Type': 'application/json',
+            Authorization: `Bearer ${token}`, // Replace with your token
+            "Content-Type": "application/json",
           },
         });
-  
+
         if (!response.ok) {
           throw new Error("Failed to fetch courses");
         }
-  
+
         const data = await response.json();
         console.log("data", data);
-        setallCourses(data.data); // Ensure data.data is an array
+        setallCourses(data.data); // Assuming the API returns a `courses` array
       } catch (error) {
         console.error("Error fetching courses:", error);
       }
     };
-  
+
+    fetchallCourses();
+  }, [, token]);
+
+  useEffect(() => {
     if (token) {
+      const fetchallCourses = async () => {
+        try {
+          const response = await fetch(`https://api.a1schools.org/courses`, {
+            method: "GET",
+            headers: {
+              Authorization: `Bearer ${token}`,
+              "Content-Type": "application/json",
+            },
+          });
+
+          if (!response.ok) {
+            throw new Error("Failed to fetch courses");
+          }
+
+          const data = await response.json();
+          setallCourses(data.data);
+        } catch (error) {
+          console.error("Error fetching courses:", error);
+        }
+      };
       fetchallCourses();
     }
   }, [token]);
 
-  const enrollCourse = async (courseId : string) => {
+  useEffect(() => {
+    if (token) {
+      const fetchacompletedCourses = async () => {
+        try {
+          const response = await fetch(
+            `https://api.a1schools.org/users/${studentId}/completed-courses`,
+            {
+              method: "GET",
+              headers: {
+                Authorization: `Bearer ${token}`,
+                "Content-Type": "application/json",
+              },
+            }
+          );
+
+          if (!response.ok) {
+            throw new Error("Failed to fetch courses");
+          }
+
+          const data = await response.json();
+          console.log("com", data);
+          setcompletedCourses(data.data);
+        } catch (error) {
+          console.error("Error fetching courses:", error);
+        }
+      };
+      fetchacompletedCourses();
+    }
+  }, [token]);
+
+  const enrollCourse = async (courseId: string) => {
     try {
-      const response = await fetch(`https://api.a1schools.org/courses/${courseId}/enroll`, {
-        method: "POST",
-        headers: {
-          'Authorization': `Bearer ${token}`, 
-          'Content-Type': 'application/json',
-        },
-      });
-  
+      const response = await fetch(
+        `https://api.a1schools.org/courses/${courseId}/enroll`,
+        {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${token}`,
+            "Content-Type": "application/json",
+          },
+        }
+      );
+
       if (!response.ok) {
         throw new Error("Failed to enroll course");
       }
-  
+
       const data = await response.json();
       console.log("enrolldata", data);
 
@@ -261,40 +383,37 @@ setCourseid(courseIds)
       } else {
         console.warn("No payment link found in response");
       }
-  
     } catch (error) {
       console.error("Error enrolling course:", error);
     }
   };
-  
 
   const handleLogout = async () => {
     try {
       const response = await fetch(
         `https://api.a1schools.org/auth/logout/${studentId}`,
         {
-          method: 'GET', 
+          method: "GET",
           headers: {
-            'Content-Type': 'application/json',
-            
+            "Content-Type": "application/json",
           },
         }
       );
-  
+
       if (response.ok) {
-        console.log('Logout successful');
+        console.log("Logout successful");
         // Optional: Clear any user data from localStorage/sessionStorage
         // Redirect to login/home page
-        window.location.href = '/login';
+        window.location.href = "/login";
       } else {
         const errorData = await response.json();
-        console.error('Logout failed:', errorData.message);
+        console.error("Logout failed:", errorData.message);
       }
     } catch (error) {
-      console.error('Network error during logout:', error);
+      console.error("Network error during logout:", error);
     }
   };
-  
+
   return (
     <SidebarProvider>
       <div className="flex min-h-screen">
@@ -339,31 +458,28 @@ setCourseid(courseIds)
               </SidebarMenuItem> */}
               <SidebarMenuItem>
                 <SidebarMenuButton asChild>
-                  <Link href="/student/profile">
+                  <Link href="/student/dashboard/profile">
                     <User className="h-4 w-4" />
                     <span>Profile</span>
                   </Link>
                 </SidebarMenuButton>
               </SidebarMenuItem>
-              <SidebarMenuItem>
+              {/* <SidebarMenuItem>
                 <SidebarMenuButton asChild>
                   <Link href="/student/settings">
                     <Settings className="h-4 w-4" />
                     <span>Settings</span>
                   </Link>
                 </SidebarMenuButton>
-              </SidebarMenuItem>
+              </SidebarMenuItem> */}
 
               <SidebarMenuItem>
-                    <SidebarMenuButton asChild>
-                     <button  onClick={handleLogout}>
-
-                     <span  className="text-[red]">Log Out</span>
-
-                     </button>
-                      
-                    </SidebarMenuButton>
-                  </SidebarMenuItem>
+                <SidebarMenuButton asChild>
+                  <button onClick={handleLogout}>
+                    <span className="text-[red]">Log Out</span>
+                  </button>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
             </SidebarMenu>
           </SidebarContent>
           <SidebarFooter className="p-4">
@@ -378,7 +494,7 @@ setCourseid(courseIds)
               <div className="flex flex-col">
                 <span className="text-sm font-medium">{student.fullname}</span>
                 <span className="text-xs text-muted-foreground">
-                 {student.email}
+                  {student.email}
                 </span>
               </div>
             </div>
@@ -421,7 +537,9 @@ setCourseid(courseIds)
                 <GraduationCap className="h-4 w-4 text-muted-foreground" />
               </CardHeader>
               <CardContent>
-                <div className="text-2xl font-bold">2</div>
+                <div className="text-2xl font-bold">
+                  {completedCourses.length}
+                </div>
                 {/* <p className="text-xs text-muted-foreground">
                   +1 from last month
                 </p> */}
@@ -449,7 +567,9 @@ setCourseid(courseIds)
                 <Star className="h-4 w-4 text-muted-foreground" />
               </CardHeader>
               <CardContent>
-                <div className="text-2xl font-bold">{certificates.length || 0}</div>
+                <div className="text-2xl font-bold">
+                  {certificates.length || 0}
+                </div>
                 {/* <p className="text-xs text-muted-foreground">
                   +1 from last month
                 </p> */}
@@ -460,156 +580,199 @@ setCourseid(courseIds)
           <div className="mt-8">
             <Tabs defaultValue="in-progress">
               <TabsList className="mb-4">
-                <TabsTrigger value="in-progress">In Progress</TabsTrigger>
-                <TabsTrigger value="completed">Completed</TabsTrigger>
-                <TabsTrigger value="recommended">Recommended</TabsTrigger>
+                <TabsTrigger
+                  className="data-[state=active]:bg-blue data-[state=active]:text-whit"
+                  value="in-progress"
+                >
+                  In Progress
+                </TabsTrigger>
+                <TabsTrigger
+                  className="data-[state=active]:bg-white data-[state=active]:text-black"
+                  value="completed"
+                >
+                  Completed
+                </TabsTrigger>
+                <TabsTrigger
+                  className="data-[state=active]:bg-white data-[state=active]:text-black"
+                  value="recommended"
+                >
+                  Recommended
+                </TabsTrigger>
               </TabsList>
               <TabsContent value="in-progress">
                 <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-                  {
-                   courses.length === 0 ? (
+                  {courses.length === 0 ? (
                     <p className="text-muted-foreground text-center mt-8">
-                     You have not taken any courses yet.
+                      You have not taken any courses yet.
                     </p>
-                  ) : 
-                  
-                  (courses.map((course) => (
-                    <Card key={course.id} className="w-[320px] overflow-hidden">
-                      <div className="aspect-video w-full overflow-hidden">
-                        <Image
-                          src={course.image_link || "/placeholder.svg"}
-                          alt={course.name}
-                          width={400}
-                          height={220}
-                          className="h-full w-full object-cover"
-                        />
-                      </div>
-                      <CardHeader className="p-4 pb-0">
-                        <CardTitle className="text-lg">
-                          {course.name}
-                        </CardTitle>
-                        <CardDescription>{course.instructor.fullname}</CardDescription>
-                      </CardHeader>
-                      <CardContent className="p-4">
-                        <div className="flex items-center justify-between mb-2">
-                          <span className="text-sm text-muted-foreground">
-                            Progress
-                          </span>
-                          <span className="text-sm font-medium">
-                            {course.progress}%
-                          </span>
+                  ) : (
+                    courses.map((course) => (
+                      <Card
+                        key={course.id}
+                        className="w-[320px] overflow-hidden"
+                      >
+                        <div className="aspect-video w-full overflow-hidden">
+                          <Image
+                            src={course.image_link || "/placeholder.svg"}
+                            alt={course.name}
+                            width={400}
+                            height={220}
+                            className="h-full w-full object-cover"
+                          />
                         </div>
-                        <Progress value={course.progress} className="h-2" />
-                        <div className="mt-4 flex items-center justify-between">
-                          <span className="text-sm text-muted-foreground">
-                            {course.completedLessons} / {course.totalLessons}{" "}
-                            lessons
-                          </span>
-                          <Button size="sm">Continue</Button>
-                        </div>
-                      </CardContent>
-                    </Card>
-                  )))}
+                        <CardHeader className="p-4 pb-0">
+                          <CardTitle className="text-lg">
+                            {course.name}
+                          </CardTitle>
+                          <CardDescription>
+                            {course.instructor.fullname}
+                          </CardDescription>
+                        </CardHeader>
+                        <CardContent className="p-4">
+                          <div className="flex items-center justify-between mb-2">
+                            <span className="text-sm text-muted-foreground">
+                              Progress
+                            </span>
+                            <span className="text-sm font-medium">
+                              {course.percentComplete}%
+                            </span>
+                          </div>
+                          <Progress
+                            value={parseInt(course.percentComplete)}
+                            className="h-2"
+                          />
+                          <div className="mt-4 flex items-center justify-between">
+                            <span className="text-sm text-muted-foreground">
+                              {course.completionStatus}
+                            </span>
+                            <Button
+                              size="sm"
+                              onClick={() => setSelectedCourse(course)}
+                            >
+                              Continue
+                            </Button>
+                          </div>
+                        </CardContent>
+                      </Card>
+                    ))
+                  )}
                 </div>
               </TabsContent>
               <TabsContent value="completed">
-                <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-                  {completedCourses.map((course) => (
-                    <Card key={course.id} className="overflow-hidden">
-                      <div className="aspect-video w-full overflow-hidden">
-                        <Image
-                          src={course.image || "/placeholder.svg"}
-                          alt={course.title}
-                          width={400}
-                          height={220}
-                          className="h-full w-full object-cover"
-                        />
-                      </div>
-                      <CardHeader className="p-4 pb-0">
-                        <CardTitle className="text-lg">
-                          {course.title}
-                        </CardTitle>
-                        <CardDescription>{course.instructor}</CardDescription>
-                      </CardHeader>
-                      <CardContent className="p-4">
-                        <div className="flex items-center justify-between mb-2">
-                          <span className="text-sm text-muted-foreground">
-                            Completed on
-                          </span>
-                          <span className="text-sm font-medium">
-                            {course.completedDate}
-                          </span>
+                <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3 ">
+                  {completedCourses.length === 0 ? (
+                    <>You have not completed any courses</>
+                  ) : (
+                    completedCourses.map((course) => (
+                      <Card key={course.id} className="overflow-hidden">
+                        <div className="aspect-video w-full overflow-hidden">
+                          <Image
+                            src={course.image_link || "/placeholder.svg"}
+                            alt={course.name}
+                            width={400}
+                            height={220}
+                            className="h-full w-full object-cover"
+                          />
                         </div>
-                        <div className="mt-4 flex items-center justify-between">
-                          <div className="flex items-center">
-                            <Star className="h-4 w-4 fill-primary text-primary mr-1" />
+                        <CardHeader className="p-4 pb-0">
+                          <CardTitle className="text-lg">
+                            {course.name}
+                          </CardTitle>
+                          <CardDescription>
+                            {course.instructor.fullname}
+                          </CardDescription>
+                        </CardHeader>
+                        <CardContent className="p-4">
+                          <div className="flex items-center justify-between mb-2">
+                            <span className="text-sm text-muted-foreground">
+                              Completed on
+                            </span>
                             <span className="text-sm font-medium">
-                              {course.rating}
+                              {/* {course.completedDate} */}
                             </span>
                           </div>
-                          <Button size="sm" variant="outline">
-                            View Certificate
-                          </Button>
-                        </div>
-                      </CardContent>
-                    </Card>
-                  ))}
+                          <div className="mt-4 flex items-center justify-between">
+                            <div className="flex items-center">
+                              <Star className="h-4 w-4 fill-primary text-primary mr-1" />
+                              <span className="text-sm font-medium">
+                                {course.average_rating}
+                              </span>
+                            </div>
+
+                            <Button size="sm" variant="outline">
+                              View Certificate
+                            </Button>
+                          </div>
+                        </CardContent>
+                      </Card>
+                    ))
+                  )}
                 </div>
               </TabsContent>
               <TabsContent value="recommended">
                 <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-                  { allcourses.length === 0 ? (
-  <p className="text-muted-foreground text-center mt-8">
-     No uploaded  course yet.
-  </p>
-) : 
- (allcourses.map((course) => (
-                    <Card key={course.id} className="overflow-hidden">
-                      <div className="aspect-video w-full overflow-hidden">
-                        {/* <Image
-                          src={course.image_link }
-                          alt={course.name}
-                          width={400}
-                          height={220}
-                          className="h-full w-full object-cover"
-                        /> */}
-                        <Image src={course.image_link}  width={400}
-                          height={220}  className="h-full w-full object-cover" alt="" />
-                      </div>
-                      <CardHeader className="p-4 pb-0">
-                        <CardTitle className="text-lg">
-                          {course.name}
-                        </CardTitle>
-                        <CardDescription>{course.instructor.fullname}</CardDescription>
-                      </CardHeader>
-                      <CardContent className="p-4">
-                        <div className="flex items-center justify-between mb-2">
-                          <div className="flex items-center">
-                            <Star className="h-4 w-4 fill-primary text-primary mr-1" />
-                            <span className="text-sm font-medium">
-                              {course.average_rating || 0}
-                            </span>
-                            <span className="text-xs text-muted-foreground ml-1">
+                  {allcourses.length === 0 ? (
+                    <p className="text-muted-foreground text-center mt-8">
+                      No uploaded course yet.
+                    </p>
+                  ) : (
+                    allcourses.map((course) => (
+                      <Card key={course.id} className="overflow-hidden">
+                        <div className="aspect-video w-full overflow-hidden">
+                          <img
+                            src={course.image_link}
+                            alt={course.name}
+                            width={400}
+                            height={220}
+                            className="h-full w-full object-cover"
+                          />
+                        </div>
+                        <CardHeader className="p-4 pb-0">
+                          <CardTitle className="text-lg">
+                            {course.name}
+                          </CardTitle>
+                          <CardDescription>
+                            {course.instructor.fullname}
+                          </CardDescription>
+                        </CardHeader>
+                        <CardContent className="p-4">
+                          <div className="flex items-center justify-between mb-2">
+                            <div className="flex items-center">
+                              <Star className="h-4 w-4 fill-primary text-primary mr-1" />
+                              <span className="text-sm font-medium">
+                                {course.average_rating || 0}
+                              </span>
+                              <span className="text-xs text-muted-foreground ml-1"></span>
+                            </div>
+                            <span className="text-sm font-bold">
+                              ${course.price}
                             </span>
                           </div>
-                          <span className="text-sm font-bold">
-                            ${course.price}
-                          </span>
-                        </div>
-                        <div className="mt-4 flex items-center justify-between">
-                          <span className="text-sm text-muted-foreground">
-                          </span>
-                          <Button  onClick={() => enrollCourse(course.id)} size="sm">Enroll</Button>
-                        </div>
-                      </CardContent>
-                    </Card>
-                  )))}
+                          <div className="mt-4 flex items-center justify-between">
+                            <span className="text-sm text-muted-foreground"></span>
+                            <Button
+                              onClick={() => enrollCourse(course.id)}
+                              size="sm"
+                            >
+                              Enroll
+                            </Button>
+                          </div>
+                        </CardContent>
+                      </Card>
+                    ))
+                  )}
                 </div>
               </TabsContent>
             </Tabs>
           </div>
         </div>
       </div>
+      {selectedCourse && (
+        <CourseDetail
+          course={selectedCourse}
+          onClose={() => setSelectedCourse(null)}
+        />
+      )}
     </SidebarProvider>
   );
 }

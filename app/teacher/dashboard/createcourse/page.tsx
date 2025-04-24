@@ -267,9 +267,7 @@ export default function CourseManagementPage() {
     if (!m) return;
 
     const newLessonId =
-      m.lessons.length > 0
-        ? Math.max(...m.lessons.map((l) => l.id)) + 1
-        : 1;
+      m.lessons.length > 0 ? Math.max(...m.lessons.map((l) => l.id)) + 1 : 1;
 
     setModules((prev) =>
       prev.map((module) =>
@@ -582,7 +580,7 @@ export default function CourseManagementPage() {
       }
 
       alert("Course created successfully!");
-      router.push("/instructor/manage-courses");
+      router.push("/teacher/dashboard");
     } catch (error) {
       console.error("Error creating course:", error);
       alert(
